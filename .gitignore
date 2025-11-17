@@ -1,0 +1,12 @@
+# Ignore project dependencies
+node_modules/
+
+# Ignore build output
+build/
+
+# Final extension build
+contentful-knowledge-connector.tar.gz
+
+# You might also want to add...
+.env
+*.log
