@@ -1,41 +1,46 @@
-Cognigy.AI Advanced Contentful Knowledge Connector
+Cognigy.AI Advanced Contentful Connector
+This extension provides a powerful and resilient integration with Contentful, designed to import complex, modular content into Cognigy.AI as Knowledge Sources and to fetch Contentful entries directly within a Flow.
 
-This extension provides a powerful Knowledge Connector for importing complex, modular content from a Contentful space into Cognigy.AI Knowledge Sources.
+It goes far beyond simple entry fetching by including advanced features such as:
 
-It goes far beyond a simple entry import by including advanced features such as recursive component parsing, hierarchical topic filtering, and optional LLM-powered semantic chunking.
+Intelligent Content Assembly: Recursively parses modular content architectures (Rich Text, embedded components, and tables) into a single, clean text document.
 
-Features
+Hierarchical Importing: Provides four distinct Knowledge Connectors for granular control over what you import, from importing everything to filtering by main topic and sub-topic.
 
-Advanced Content Parsing: Intelligently assembles content from modular "page" architectures. It can parse:
+Flow-Based Fetching: Includes three Flow Nodes to fetch or search for Contentful entries live in your conversation.
 
-Rich Text fields (body).
+Dual Chunking Strategy: Offers both a standard, fast Recursive Splitter (via LangChain) and an advanced LLM Semantic Chunking strategy using Azure OpenAI.
 
-Secondary content fields (sidebarContent).
+Resilient & Robust: All API calls use a fetch-retry mechanism to automatically handle network errors or Contentful's rate limits.
 
-Embedded component entries (Component: Accordion, Component: Tabs, Component: Text).
+1. Core Features
+Connections: Provides Connection definitions for Contentful (CDN API) and Azure OpenAI (for LLM chunking).
 
-Rich Text tables (converted to Markdown for LLMs).
+Flow Nodes:
 
-Hierarchical Topic Management: Solves the 100-source limit by allowing you to filter and group entries.
+Get Single Entry: Fetches a Contentful entry by its ID.
 
-Filter by Main Topic: Import only entries that match a specific "Main Topic" (e.g., "Internet").
+Get Entries by Type: Fetches all entries matching a specific Content Type ID.
 
-Group by Sub-Topic: Automatically create a separate Knowledge Source for each "Sub-Topic" (e.g., "Wi-Fi", "Sikkerhed", "Teknisk support").
+Search Entries: Performs a full-text search across your Contentful space.
 
-Dual Chunking Strategy: Choose your preferred chunking method.
+Knowledge Connectors:
 
-Recursive Splitter (Default): A fast, free, and reliable splitter (from LangChain) that splits by character.
+Import All Knowledge: Imports all entries of a Content Type, grouping them into Knowledge Sources based on a "Sub-Topic" field.
 
-LLM Semantic Chunking: Uses a connected Azure OpenAI model to split text based on meaning, creating more contextually complete chunks.
+Import by Main Topic: Filters entries by a "Main Topic" (e.g., "Internet") and then groups them by "Sub-Topic".
 
-Robust & Resilient: Uses fetch-retry for all Contentful API calls, automatically retrying on network errors or rate limits.
+Import by Sub-Topic: Filters entries by both a "Main Topic" and a specific "Sub-Topic" to create a single, targeted Knowledge Source.
 
-1. Connections
+Import Unstructured (Advanced): The most powerful connector, offering filters and the choice between recursive and LLM-powered semantic chunking.
 
-This extension requires two Connections to be configured in Cognigy.AI.
+2. Components in Detail
+This extension registers 2 Connections, 3 Flow Nodes, and 4 Knowledge Connectors.
+
+Connections
+Before using any Nodes or Connectors, you must configure the following Connections in your Cognigy.AI instance.
 
 A. Contentful Connection
-
 This connection holds the credentials for your Contentful space.
 
 Type: contentful
@@ -49,8 +54,7 @@ spaceId: Your Contentful Space ID.
 accessToken: Your Contentful Delivery API Access Token.
 
 B. Azure OpenAI Connection
-
-This connection is only required if you use the "LLM Semantic Chunking" strategy.
+This connection is only required if you use the "LLM Semantic Chunking" strategy in the Import Unstructured Knowledge Connector.
 
 Type: AzureOpenAIProviderV2
 
@@ -60,145 +64,162 @@ Fields:
 
 apiKey: Your Azure OpenAI API Key.
 
-2. Knowledge Connector Configuration
+Flow Nodes
+You can use these nodes directly in your Flows to fetch content dynamically. All nodes provide a "Storage Option" section to save the result to Input or Context.
 
-When you add the "Contentful Import" Knowledge Connector to a Knowledge Store, you will see the following fields:
+Node: Get Single Entry
+Description: Fetches a single Contentful entry using its unique Entry ID.
 
-Contentful Settings
+Configuration:
 
-Field
+Contentful Connection: Your configured connection.
 
-Description
+Entry ID: The ID of the entry to retrieve (e.g., 1a2b3c4d5e).
 
-Example
+Node: Get Entries by Type
+Description: Fetches a collection of entries that match a specific Content Type ID.
 
-Contentful Connection
+Configuration:
 
-Select the contentful Connection you created in Step 1.
+Contentful Connection: Your configured connection.
 
-My Contentful Connection
+Content Type ID: The API ID of the content type (e.g., article or faqEntry).
 
-Environment
+Node: Search Entries
+Description: Performs a full-text search over all entries in your Contentful space.
 
-The Contentful environment to pull from.
+Configuration:
 
-staging or master
+Contentful Connection: Your configured connection.
 
-Content Type ID
+Query: The full-text search query (e.g., "how do I reset my password").
 
-The API ID of your main "page" content type.
+Knowledge Connectors
+This extension provides four distinct Knowledge Connectors, allowing you to fine-tune your knowledge import strategy and work around the 100-source limit.
 
-article
+Common Configuration Fields:
 
-Title Field ID
+Contentful Connection: Your configured connection.
 
-The API ID of the field to use as the entry's title.
+Environment: The Contentful environment (e.g., master or staging).
 
-title
+Content Type ID: The API ID of your main "page" content type (e.g., article).
 
-Modular Content Field ID
+Title Field ID: The API ID of the field to use as the entry's title (e.g., title).
 
-The API ID of the field that contains your components (either a Rich Text field or a Component List field).
+Modular Content Field ID: The API ID of the Rich Text or Component List field (e.g., body).
 
-body
+1. Import All Knowledge Stores
+Label: 1. Import All Knowledge Stores
 
-Hierarchical Grouping (Optional but Recommended)
+Use Case: Imports all entries of the specified Content Type. It then groups them into separate Knowledge Sources based on the value in their knowledgeGroup (Sub-Topic) field.
 
-This is the recommended way to organize your knowledge and avoid the 100-source limit.
+Grouping: Entries without a knowledgeGroup field are placed in an "Uncategorized" source.
 
-Field
+2. Import Knowledge Store (by Main Topic)
+Label: 2. Import Knowledge Store (by Main Topic)
 
-Description
+Use Case: Imports entries that match a specific mainTopic (e.g., "Internet"). It then groups those entries into separate Knowledge Sources based on their knowledgeGroup field.
 
-Example
+Specific Fields:
 
-Main Topic Field ID
+Main Topic: A dropdown to select the mainTopic to filter by (e.g., "Internet", "Mobil", "Abonnement").
 
-(Optional Filter) The API ID of the field in Contentful that defines the "Main Topic" (e.g., "Internet", "Mobil").
+3. Import Knowledge Source (by Sub-Topic)
+Label: 3. Import Knowledge Source (by Sub-Topic)
 
-mainTopic
+Use Case: Creates one single Knowledge Source. It filters entries that match both a mainTopic and a specific subTopicValue.
 
-Main Topic Value
+Specific Fields:
 
-(Optional Filter) The specific value to import. The connector will only import entries that match this value.
+Main Topic: A dropdown to select the mainTopic.
 
-Internet
+Sub-Topic (Knowledge Group): A text field for the exact name of the Sub-Topic to import (e.g., "Wi-Fi").
 
-Sub-Topic Grouping Field ID
+4. Import Unstructured (Advanced)
+Label: 4. Import Unstructured (Advanced)
 
-(Optional) The API ID of the field that defines the "Sub-Topic". The connector will create a new Knowledge Source for each unique value in this field.
+Use Case: The most flexible connector. It can filter by mainTopic and/or subTopicValue and allows you to select your chunking strategy.
 
-knowledgeGroup
+Specific Fields:
 
-Chunking Strategy
+Main Topic Value (Optional Filter): A text field to filter by mainTopic.
 
-This section controls how your assembled content is split into chunks.
+Sub-Topic Value (Optional Filter): A text field to filter by knowledgeGroup.
 
-Field
+Chunking Strategy:
 
-Description
+Recursive Splitter (Fast & Free): (Default) Uses LangChain's RecursiveCharacterTextSplitter.
 
-Chunking Strategy
+LLM Semantic Chunking (Smarter): Uses an Azure OpenAI model to split text based on meaning.
 
-Choose your chunking method. 
+Azure OpenAI Connection: (If LLM selected) Your Azure connection.
 
+Azure Custom Endpoint URL: (If LLM selected) The full API endpoint for your Azure OpenAI deployment (e.g., https://.../chat/completions?api-version=...).
 
+Semantic Chunking Prompt: (If LLM selected) The prompt to instruct the LLM. It must include {{text_to_chunk}} and return a JSON object in the format {"chunks": ["chunk1", "chunk2"]}.
 
-- Recursive Splitter: Fast, free, and reliable. 
+3. Technical Deep Dive: How It Works
+The true power of this connector lies in its utils.ts file, which handles content processing.
 
+A. Intelligent Content Assembly
+When an entry is fetched, it is not simply "text." This connector intelligently assembles it.
 
+Finds Linked Components: It first looks at the Modular Content Field ID (e.g., body). If this field is a list of linked entries (a modular page), it iterates through each one.
 
-- LLM Semantic Chunking: Smarter, context-aware chunking.
+Renders Components: It uses a renderComponent function to convert known Contentful components into clean Markdown/text:
 
-Azure OpenAI Connection
+componentAccordion: Renders as ## Title followed by the accordion's body content.
 
-(Visible if "LLM" is selected) 
+componentTabs: Recursively finds all componentText entries linked within the tabs and renders them.
 
+componentText: Renders as ### Title followed by the tab's text content.
 
+componentImage / embedded-asset-block: Renders as [Image: Description].
 
- Select the AzureOpenAIProviderV2 Connection you created.
+Parses Rich Text: It uses a renderRichTextForLLM function to parse standard Rich Text fields. This function is notable because it:
 
-Azure Custom Endpoint URL
+Converts headings (heading-1, heading-2) into Markdown (#, ##).
 
-(Visible if "LLM" is selected) 
+Converts lists into Markdown bullet points (*).
 
+Converts Rich Text tables into valid Markdown tables, making them readable by LLMs.
 
+Combines Fields: It combines the content from the main body field and an optional sidebarContent field into a single, cohesive document for chunking.
 
- Your full Azure OpenAI API endpoint, including deployment and api-version.
+B. Dual Chunking Strategy
+Once the full text is assembled, it is passed to a chunker.
 
-Semantic Chunking Prompt
+Recursive Splitter (Default):
 
-(Visible if "LLM" is selected) 
+Uses @langchain/textsplitters (RecursiveCharacterTextSplitter).
 
+Splits text by character (\n\n, \n, , ``) to respect paragraphs and sentences.
 
+Fast, free, and reliable.
 
- The prompt that instructs the LLM. It must include {{text_to_chunk}} and must return a JSON object in the format {"chunks": ["chunk1", "chunk2"]}.
+Chunk size is hard-coded to 2000 characters.
 
-Additional Settings
+LLM Semantic Chunking (Advanced):
 
-Field
+Uses axios to make a POST request to your azureCustomEndpointUrl.
 
-Description
+Injects the assembled text into the llmChunkingPrompt (replacing {{text_to_chunk}}).
 
-Example
+The prompt (defined in importUnstructured.ts) instructs the LLM to act as an ingestion model and return a specific JSON format.
 
-Additional Source Tags
+Uses zod (LlmChunkResponseSchema) to validate the LLM's output. If the LLM returns invalid JSON, the import for that entry will fail, protecting your Knowledge Source from bad data.
 
-(Optional) Any extra tags to add to all Knowledge Sources created by this import.
+4. Recommended Contentful Setup
+To use the powerful hierarchical grouping features, your main Content Type (e.g., article) should have two "Text" or "Symbol" fields:
 
-help-articles
-
-3. Recommended Contentful Setup
-
-To use the grouping features, your Content Type (e.g., article) should have two fields:
-
-Main Topic: A "Text" or "Symbol" field.
+Main Topic:
 
 Name: Main Topic
 
 Field ID: mainTopic
 
-Sub-Topic (Knowledge Group): A "Text" or "Symbol" field.
+Sub-Topic (Knowledge Group):
 
 Name: Knowledge Group
 
@@ -211,18 +232,37 @@ mainTopic: "Internet"
 
 knowledgeGroup: "Wi-Fi"
 
-When you run the import with the filter Main Topic Value = Internet, the connector will find this entry and put its chunks into a Knowledge Source named Wi-Fi, which will also be tagged with Internet.
+When you run an import:
 
-4. Installation
+Import All would find this entry and put its chunks into a Knowledge Source named Wi-Fi.
 
-Place all the files in the correct folder structure (as seen in the project).
+Import by Main Topic (set to "Internet") would find it and put it in the Wi-Fi source.
 
-Open a terminal in the project's root folder.
+Import by Sub-Topic (set to "Internet" and "Wi-Fi") would find it and create a single Wi-Fi source with just this entry (and others like it).
 
-Run npm install to install all dependencies.
+5. Installation
+Install Dependencies: Open a terminal in the project's root folder and run:
 
-Run npm run zip to build the code and create the contentful-knowledge-connector.tar.gz file.
+Bash
 
-In Cognigy.AI, go to Manage > Extensions and upload the .tar.gz file.
+npm install
+Build & Zip the Extension: Run the following script from package.json to build the TypeScript code and create the extension bundle:
 
-Go to Manage > Connections and create your Contentful Connection and (if needed) your AzureOpenAIProviderV2 Connection.
+Bash
+
+npm run zip
+This will create a contentful-knowledge-connector.tar.gz file.
+
+Upload to Cognigy.AI:
+
+In Cognigy.AI, go to Manage > Extensions.
+
+Upload the contentful-knowledge-connector.tar.gz file.
+
+Create Connections:
+
+Go to Manage > Connections.
+
+Create your Contentful Connection.
+
+(If needed) Create your Azure OpenAI Connection.
