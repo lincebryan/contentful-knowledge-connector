@@ -11,6 +11,8 @@ export interface IExecutionOptions {
 
 // --- Logging Helper (Local to Nodes) ---
 const logNodeError = (message: string, error: any) => {
+	// Simple error logging for Nodes. 
+	// You can expand this to match the Knowledge logger if needed.
 	console.error(JSON.stringify({
 		level: "error",
 		message: message,
