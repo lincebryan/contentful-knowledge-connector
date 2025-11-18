@@ -6,10 +6,11 @@ import {
 	assembleContentFromEntry,
 	chunkWithRecursiveSplitter,
 	getEntries,
+	getTagByPrefix,
 	IContentfulEntry,
 	IContentfulResponse,
 	logMessage,
-} from "./utils"; // This must be the utils.ts file with hard-coded field IDs
+} from "./utils";
 
 // --- Interface for this connector's config fields ---
 interface IImportByMainTopicConfig {
@@ -21,27 +22,22 @@ interface IImportByMainTopicConfig {
 	contentTypeId: string;
 	titleFieldId: string;
 	modulesFieldId: string;
-	mainTopicValue: string; // This is now a required dropdown
+	mainTopicTag: string; // This value will be a tag ID like "topic:Internet"
+	subTopicTagPrefix: string;
 	additionalTags?: string[];
 }
 
-// --- HARD-CODED FIELD IDs ---
-// These are not in the UI, but the logic below
-// is hard-coded to use them.
-// const MAIN_TOPIC_FIELD_ID = "mainTopic"; // Handled by getEntries
-const SUB_TOPIC_FIELD_ID = "knowledgeGroup";
-// -----------------------------
-
 // --- Main Topic Options for the Dropdown ---
+// These values MUST match the Metadata Tags created in Contentful
 const mainTopicOptions = [
-	{ label: "Internet", value: "Internet" },
-	{ label: "Mobil", value: "Mobil" },
-	{ label: "Abonnement", value: "Abonnement" },
-	{ label: "Faktura & betaling", value: "Faktura & betaling" },
-	{ label: "Selvbetjening", value: "Selvbetjening" },
-	{ label: "Mobilt bredbånd", value: "Mobilt bredbånd" },
-	{ label: "Telefoniløsning", value: "Telefoniløsning" },
-	{ label: "Fastnettelefoni", value: "Fastnettelefoni" },
+	{ label: "Internet", value: "topic:Internet" },
+	{ label: "Mobil", value: "topic:Mobil" },
+	{ label: "Abonnement", value: "topic:Abonnement" },
+	{ label: "Faktura & betaling", value: "topic:Faktura & betaling" },
+	{ label: "Selvbetjening", value: "topic:Selvbetjening" },
+	{ label: "Mobilt bredbånd", value: "topic:Mobilt bredbånd" },
+	{ label: "Telefoniløsning", value: "topic:Telefoniløsning" },
+	{ label: "Fastnettelefoni", value: "topic:Fastnettelefoni" },
 ];
 // -------------------------------------------
 
@@ -49,7 +45,7 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 	type: "importByMainTopic",
 	label: "2. Import Knowledge Store (by Main Topic)",
 	summary:
-		"Filters entries by a Main Topic, then groups them into Knowledge Sources based on the 'knowledgeGroup' field.",
+		"Filters entries by a Main Topic Tag, then groups them into Knowledge Sources based on a Sub-Topic Tag.",
 	fields: [
 		{
 			key: "connection",
@@ -69,18 +65,27 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 				required: true,
 			},
 		},
-		// --- NEW: Main Topic Dropdown (Field ID is hard-coded) ---
 		{
-			key: "mainTopicValue",
+			key: "mainTopicTag",
 			label: "Main Topic",
 			type: "select",
-			description: "Select the Main Topic to import.",
+			description: "Select the Main Topic tag to filter by.",
 			params: {
 				required: true,
 				options: mainTopicOptions,
 			},
 		},
-		// --- End of new field ---
+		{
+			key: "subTopicTagPrefix",
+			label: "Sub-Topic Tag Prefix",
+			type: "text",
+			description:
+				"The prefix used to identify the grouping tag (e.g., for 'group:WiFi', the prefix is 'group:').",
+			defaultValue: "group:",
+			params: {
+				required: true,
+			},
+		},
 		{
 			key: "contentTypeId",
 			label: "Content Type ID",
@@ -126,7 +131,8 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 	form: [
 		{ type: "field", key: "connection" },
 		{ type: "field", key: "environment" },
-		{ type: "field", key: "mainTopicValue" }, // Field added to form
+		{ type: "field", key: "mainTopicTag" },
+		{ type: "field", key: "subTopicTagPrefix" },
 		{ type: "field", key: "contentTypeId" },
 		{ type: "field", key: "titleFieldId" },
 		{ type: "field", key: "modulesFieldId" },
@@ -135,13 +141,13 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 
 	// --- Main Import Function ---
 	function: async ({ api, config }) => {
-		// Use 'unknown' cast to satisfy TypeScript v4
 		const {
 			environment,
 			contentTypeId,
 			titleFieldId,
 			modulesFieldId,
-			mainTopicValue, // We get the value from the dropdown
+			mainTopicTag,
+			subTopicTagPrefix,
 			additionalTags = [],
 		} = config as unknown as IImportByMainTopicConfig;
 
@@ -154,24 +160,24 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 			);
 		}
 
-		if (!mainTopicValue) {
+		if (!mainTopicTag) {
 			throw new Error("You must select a Main Topic to import.");
 		}
 
 		const baseUrl = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 
 		try {
-			// --- 1. Get All Entries (Filtered by Main Topic) ---
+			// --- 1. Get Entries Filtered by Main Topic Tag ---
 			logMessage(
-				`Fetching entries for Content Type '${contentTypeId}' and Main Topic '${mainTopicValue}'`,
+				`Fetching entries for Content Type '${contentTypeId}' and Main Topic Tag '${mainTopicTag}'`,
 			);
-			// getEntries now uses the hard-coded "mainTopic" field ID
+			
 			const response: IContentfulResponse = await getEntries(
 				baseUrl,
 				accessToken,
 				contentTypeId,
-				mainTopicValue, // Pass the selected value to filter
-				undefined, // No Sub-Topic filter
+				mainTopicTag, // Pass the tag ID here
+				undefined, 
 			);
 
 			if (!response.items || response.items.length === 0) {
@@ -182,12 +188,11 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 			}
 			logMessage(`Found ${response.items.length} entries to process.`);
 
-			// --- 2. Group Entries ---
-			// Group by the hard-coded SUB_TOPIC_FIELD_ID ("knowledgeGroup")
+			// --- 2. Group Entries by Tag ---
 			const groupedEntries = new Map<string, IContentfulEntry[]>();
 			for (const entry of response.items) {
-				const groupName =
-					entry.fields[SUB_TOPIC_FIELD_ID] || "Uncategorized";
+				const fullTag = getTagByPrefix(entry, subTopicTagPrefix);
+				const groupName = fullTag ? fullTag.replace(subTopicTagPrefix, "") : "Uncategorized";
 
 				if (!groupedEntries.has(groupName)) {
 					groupedEntries.set(groupName, []);
@@ -204,20 +209,20 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 					IKnowledge.CreateKnowledgeChunkParams,
 					"knowledgeSourceId"
 				>[] = [];
-				// Base tags + add the Main Topic as a tag
+				
+				// Add the Main Topic tag to the source tags
 				const sourceTags = [
 					"contentful",
 					contentTypeId,
-					mainTopicValue,
+					mainTopicTag,
 					...additionalTags,
 				];
 
-				// --- 4. Assemble & Chunk all entries in the group ---
+				// --- 4. Assemble & Chunk ---
 				for (const entry of entriesInGroup) {
 					try {
 						const entryTitle = entry.fields[titleFieldId] || "Untitled";
 
-						// --- Assembling ---
 						const fullText = await assembleContentFromEntry(
 							entry,
 							modulesFieldId,
@@ -231,14 +236,12 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 							continue;
 						}
 
-						// --- Chunking ---
 						const chunkPrefix = `Title: ${entryTitle}\n\n`;
 						const chunkStrings = await chunkWithRecursiveSplitter(
 							fullText,
 							chunkPrefix,
 						);
 
-						// Map to the chunk objects
 						const formattedChunks = chunkStrings.map((chunkText, index) => ({
 							text: chunkText,
 							data: {
@@ -256,9 +259,9 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 							"error",
 						);
 					}
-				} // End of for...of entriesInGroup
+				}
 
-				// --- 5. Create Knowledge Source for the Group ---
+				// --- 5. Create Knowledge Source ---
 				if (allChunksForGroup.length === 0) {
 					logMessage(
 						`No chunks created for group: ${groupName}, skipping.`,
@@ -281,7 +284,6 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 						chunkCount: allChunksForGroup.length,
 					});
 
-					// --- 6. Add all Chunks to the new Source ---
 					for (const [index, chunk] of allChunksForGroup.entries()) {
 						try {
 							await api.createKnowledgeChunk({
@@ -307,7 +309,7 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 						"error",
 					);
 				}
-			} // End of for...of groupedEntries
+			} 
 		} catch (error) {
 			logMessage(
 				`Failed to import from Contentful: ${(error as Error).message}`,
