@@ -22,7 +22,6 @@ interface IImportAllConfig {
 	contentTypeId: string;
 	titleFieldId: string;
 	modulesFieldId: string;
-	subTopicTagPrefix: string; // New field for tag prefix
 	additionalTags?: string[];
 }
 
@@ -30,7 +29,7 @@ export const importAllConnector = createKnowledgeConnector({
 	type: "importAllKnowledge",
 	label: "1. Import All Knowledge Stores",
 	summary:
-		"Imports all entries of a Content Type. Groups entries into Knowledge Sources based on a Sub-Topic tag (e.g. 'group:WiFi').",
+		"Imports all entries of a Content Type. Automatically creates a Knowledge Source for every unique Sub-Topic tag found (e.g. 'group:WiFi').",
 	fields: [
 		{
 			key: "connection",
@@ -83,17 +82,7 @@ export const importAllConnector = createKnowledgeConnector({
 				required: true,
 			},
 		},
-		{
-			key: "subTopicTagPrefix",
-			label: "Sub-Topic Tag Prefix",
-			type: "text",
-			description:
-				"The prefix used to identify the grouping tag (e.g., for 'group:WiFi', the prefix is 'group:').",
-			defaultValue: "group:",
-			params: {
-				required: true,
-			},
-		},
+		// --- Removed 'subTopicTagPrefix' field from UI ---
 		{
 			key: "additionalTags",
 			label: "Additional Source Tags (Optional)",
@@ -109,7 +98,6 @@ export const importAllConnector = createKnowledgeConnector({
 		{ type: "field", key: "contentTypeId" },
 		{ type: "field", key: "titleFieldId" },
 		{ type: "field", key: "modulesFieldId" },
-		{ type: "field", key: "subTopicTagPrefix" },
 		{ type: "field", key: "additionalTags" },
 	],
 
@@ -120,7 +108,6 @@ export const importAllConnector = createKnowledgeConnector({
 			contentTypeId,
 			titleFieldId,
 			modulesFieldId,
-			subTopicTagPrefix,
 			additionalTags = [],
 		} = config as unknown as IImportAllConfig;
 
@@ -132,6 +119,10 @@ export const importAllConnector = createKnowledgeConnector({
 				"Contentful Connection details (spaceId, accessToken) are missing.",
 			);
 		}
+
+		// --- Hard-coded Convention ---
+		// We automatically assume tags starting with "group:" are the Sub-Topics
+		const subTopicTagPrefix = "group:"; 
 
 		const baseUrl = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 
@@ -158,7 +149,7 @@ export const importAllConnector = createKnowledgeConnector({
 			const groupedEntries = new Map<string, IContentfulEntry[]>();
 			
 			for (const entry of response.items) {
-				// Use the helper to find the tag that starts with "group:" (or custom prefix)
+				// Use the helper to find the tag that starts with "group:"
 				const fullTag = getTagByPrefix(entry, subTopicTagPrefix);
 				
 				// Strip the prefix to get the clean name: "group:WiFi" -> "WiFi"
@@ -188,8 +179,6 @@ export const importAllConnector = createKnowledgeConnector({
 						const entryTitle = entry.fields[titleFieldId] || "Untitled";
 
 						// --- Tagging: Find "topic:" tag to add as metadata ---
-						// We assume entries in the same group likely share the main topic, 
-						// or we just add whatever topic tag this specific entry has.
 						if (entryIndex === 0) {
 							const mainTopicTag = getTagByPrefix(entry, "topic:");
 							if (mainTopicTag) {
