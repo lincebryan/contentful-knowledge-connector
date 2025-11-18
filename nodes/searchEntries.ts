@@ -11,6 +11,7 @@ export interface ISearchEntriesParams extends INodeFunctionBaseParams {
 			spaceId: string;
 			accessToken: string;
 		};
+		environment: string;
 		query: string;
 		storeLocation: string;
 		contextKey: string;
@@ -31,6 +32,16 @@ export const searchEntriesNode = createNodeDescriptor({
 			type: "connection",
 			params: {
 				connectionType: "contentful",
+				required: true,
+			},
+		},
+		{
+			key: "environment",
+			label: "Environment",
+			type: "text",
+			defaultValue: "master",
+			description: "The Contentful environment (e.g. 'master' or 'staging')",
+			params: {
 				required: true,
 			},
 		},
@@ -87,6 +98,7 @@ export const searchEntriesNode = createNodeDescriptor({
 	],
 	form: [
 		{ type: "field", key: "connection" },
+		{ type: "field", key: "environment" },
 		{ type: "field", key: "query" },
 		{ type: "section", key: "storage" },
 	],
@@ -95,14 +107,13 @@ export const searchEntriesNode = createNodeDescriptor({
 	},
 	function: async ({ cognigy, config }: INodeFunctionBaseParams) => {
 		const { api } = cognigy;
-		const { query, connection, storeLocation, contextKey, inputKey } = config as ISearchEntriesParams["config"];
+		const { query, connection, environment, storeLocation, contextKey, inputKey } = config as ISearchEntriesParams["config"];
 		const { spaceId, accessToken } = connection;
 
-		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/master/entries`;
+		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 		const params = { query: query };
 
 		try {
-			// 'api' parameter is removed from fetchData
 			const response = await fetchData(url, accessToken, params);
 			addToStorage({ api, storeLocation, contextKey, inputKey, data: response });
 		} catch (error) {

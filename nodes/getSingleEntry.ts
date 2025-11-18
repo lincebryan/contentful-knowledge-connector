@@ -11,6 +11,7 @@ export interface IGetSingleEntryParams extends INodeFunctionBaseParams {
 			spaceId: string;
 			accessToken: string;
 		};
+		environment: string;
 		entryId: string;
 		storeLocation: string;
 		contextKey: string;
@@ -31,6 +32,16 @@ export const getSingleEntryNode = createNodeDescriptor({
 			type: "connection",
 			params: {
 				connectionType: "contentful",
+				required: true,
+			},
+		},
+		{
+			key: "environment",
+			label: "Environment",
+			type: "text",
+			defaultValue: "master",
+			description: "The Contentful environment (e.g. 'master' or 'staging')",
+			params: {
 				required: true,
 			},
 		},
@@ -87,6 +98,7 @@ export const getSingleEntryNode = createNodeDescriptor({
 	],
 	form: [
 		{ type: "field", key: "connection" },
+		{ type: "field", key: "environment" },
 		{ type: "field", key: "entryId" },
 		{ type: "section", key: "storage" },
 	],
@@ -95,13 +107,12 @@ export const getSingleEntryNode = createNodeDescriptor({
 	},
 	function: async ({ cognigy, config }: INodeFunctionBaseParams) => {
 		const { api } = cognigy;
-		const { entryId, connection, storeLocation, contextKey, inputKey } = config as IGetSingleEntryParams["config"];
+		const { entryId, connection, environment, storeLocation, contextKey, inputKey } = config as IGetSingleEntryParams["config"];
 		const { spaceId, accessToken } = connection;
 
-		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/master/entries/${entryId}`;
+		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries/${entryId}`;
 
 		try {
-			// 'api' parameter is removed from fetchData
 			const response = await fetchData(url, accessToken, {});
 			addToStorage({ api, storeLocation, contextKey, inputKey, data: response });
 		} catch (error) {
