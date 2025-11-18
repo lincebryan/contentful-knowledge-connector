@@ -1,15 +1,18 @@
 {
 	"name": "contentful-knowledge-connector",
-	"version": "3.0.0",
-	"description": "Contentful Knowledge Connector Extension with advanced parsing and LLM chunking.",
+	"version": "3.1.0",
+	"description": "Contentful Knowledge Connector Extension with advanced parsing, tag filtering, and LLM chunking.",
 	"main": "build/module.js",
 	"scripts": {
 		"build": "tsc",
-		"zip": "npm run build && tar -zcf contentful-knowledge-connector.tar.gz build/ connections/ knowledge/ module.ts package.json package-lock.json README.md icon.png tsconfig.json tslint.json",
+		"zip": "npm run build && tar -zcf contentful-knowledge-connector.tar.gz build/ connections/ knowledge/ nodes/ module.ts package.json package-lock.json README.md icon.png tsconfig.json tslint.json biome.json",
 		"watch": "tsc -w"
 	},
 	"author": "TDC Erhverv",
-	"keywords": ["contentful","knowledgeConnector"],
+	"keywords": [
+		"contentful",
+		"knowledgeConnector"
+	],
 	"license": "ISC",
 	"dependencies": {
 		"@cognigy/extension-tools": "0.16.6",
