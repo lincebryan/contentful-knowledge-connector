@@ -23,7 +23,6 @@ interface IImportByMainTopicConfig {
 	titleFieldId: string;
 	modulesFieldId: string;
 	mainTopicTag: string; // This value will be a tag ID like "topic:Internet"
-	subTopicTagPrefix: string;
 	additionalTags?: string[];
 }
 
@@ -45,7 +44,7 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 	type: "importByMainTopic",
 	label: "2. Import Knowledge Store (by Main Topic)",
 	summary:
-		"Filters entries by a Main Topic Tag, then groups them into Knowledge Sources based on a Sub-Topic Tag.",
+		"Filters entries by a Main Topic Tag, then automatically groups them into Knowledge Sources based on their Sub-Topic tag (e.g. 'group:WiFi').",
 	fields: [
 		{
 			key: "connection",
@@ -75,17 +74,7 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 				options: mainTopicOptions,
 			},
 		},
-		{
-			key: "subTopicTagPrefix",
-			label: "Sub-Topic Tag Prefix",
-			type: "text",
-			description:
-				"The prefix used to identify the grouping tag (e.g., for 'group:WiFi', the prefix is 'group:').",
-			defaultValue: "group:",
-			params: {
-				required: true,
-			},
-		},
+		// --- Removed 'subTopicTagPrefix' field from UI ---
 		{
 			key: "contentTypeId",
 			label: "Content Type ID",
@@ -132,7 +121,6 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 		{ type: "field", key: "connection" },
 		{ type: "field", key: "environment" },
 		{ type: "field", key: "mainTopicTag" },
-		{ type: "field", key: "subTopicTagPrefix" },
 		{ type: "field", key: "contentTypeId" },
 		{ type: "field", key: "titleFieldId" },
 		{ type: "field", key: "modulesFieldId" },
@@ -147,7 +135,6 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 			titleFieldId,
 			modulesFieldId,
 			mainTopicTag,
-			subTopicTagPrefix,
 			additionalTags = [],
 		} = config as unknown as IImportByMainTopicConfig;
 
@@ -163,6 +150,9 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 		if (!mainTopicTag) {
 			throw new Error("You must select a Main Topic to import.");
 		}
+
+		// --- Hard-coded Convention ---
+		const subTopicTagPrefix = "group:";
 
 		const baseUrl = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 
@@ -191,7 +181,10 @@ export const importByMainTopicConnector = createKnowledgeConnector({
 			// --- 2. Group Entries by Tag ---
 			const groupedEntries = new Map<string, IContentfulEntry[]>();
 			for (const entry of response.items) {
+				// Use the helper to find the tag that starts with "group:"
 				const fullTag = getTagByPrefix(entry, subTopicTagPrefix);
+				
+				// Strip prefix: "group:WiFi" -> "WiFi"
 				const groupName = fullTag ? fullTag.replace(subTopicTagPrefix, "") : "Uncategorized";
 
 				if (!groupedEntries.has(groupName)) {
