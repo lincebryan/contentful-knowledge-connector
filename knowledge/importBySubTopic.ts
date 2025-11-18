@@ -19,11 +19,12 @@ interface IImportBySubTopicConfig {
 	contentTypeId: string;
 	titleFieldId: string;
 	modulesFieldId: string;
-	mainTopicTag: string; // From Dropdown
+	mainTopicTag: string; // Selected from Dropdown
 	subTopicTagId: string; // Exact Tag ID (e.g. "group:WiFi")
 	additionalTags?: string[];
 }
 
+// --- Options must match your Contentful Tags ---
 const mainTopicOptions = [
 	{ label: "Internet", value: "topic:Internet" },
 	{ label: "Mobil", value: "topic:Mobil" },
@@ -39,7 +40,7 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 	type: "importBySubTopic",
 	label: "3. Import Knowledge Source (by Sub-Topic)",
 	summary:
-		"Filters entries by a Main Topic Tag and a specific Sub-Topic Tag, creating a single Knowledge Source.",
+		"Creates a SINGLE Knowledge Source containing only entries that match the selected Main Topic AND the specific Sub-Topic tag.",
 	fields: [
 		{
 			key: "connection",
@@ -63,7 +64,7 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 			key: "mainTopicTag",
 			label: "Main Topic",
 			type: "select",
-			description: "Select the Main Topic to filter by.",
+			description: "Filter: Entry MUST have this Main Topic tag.",
 			params: {
 				required: true,
 				options: mainTopicOptions,
@@ -74,7 +75,7 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 			label: "Sub-Topic Tag ID",
 			type: "text",
 			description:
-				"The exact Tag ID of the Sub-Topic to import (e.g., 'group:WiFi').",
+				"Filter: Entry MUST have this specific Sub-Topic tag (e.g., 'group:WiFi'). This will also be the name of the Knowledge Source.",
 			params: {
 				required: true,
 			},
@@ -161,7 +162,8 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 		const baseUrl = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 
 		try {
-			// --- 1. Get Entries Filtered by BOTH Tags ---
+			// --- 1. STRICT FILTERING (AND Logic) ---
+			// We request entries that have BOTH the Main Topic Tag AND the Sub-Topic Tag.
 			logMessage(
 				`Fetching entries for Main Topic '${mainTopicTag}' AND Sub-Topic '${subTopicTagId}'`,
 			);
@@ -183,8 +185,9 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 			}
 			logMessage(`Found ${entriesInGroup.length} entries to process.`);
 
-			// Use the exact sub-topic tag ID as the group name (stripped of potential prefix for safety, or raw)
-			// For simplicity, if it is "group:WiFi", let's make the name "WiFi"
+			// --- 2. Determine Knowledge Source Name ---
+			// We use the Sub-Topic Tag ID (stripped of prefix) as the name.
+			// e.g. "group:Fiber" -> "Fiber"
 			const groupName = subTopicTagId.includes(":") ? subTopicTagId.split(":")[1] : subTopicTagId;
 
 			let allChunksForGroup: Omit<
@@ -199,7 +202,7 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 				...additionalTags,
 			];
 
-			// --- 2. Assemble & Chunk ---
+			// --- 3. Assemble & Chunk ---
 			for (const entry of entriesInGroup) {
 				try {
 					const entryTitle = entry.fields[titleFieldId] || "Untitled";
@@ -242,7 +245,7 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 				}
 			}
 
-			// --- 3. Create Knowledge Source ---
+			// --- 4. Create ONE Knowledge Source ---
 			if (allChunksForGroup.length === 0) {
 				logMessage(
 					`No chunks created for group: ${groupName}, skipping.`,
@@ -254,13 +257,13 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 				.replace(/[^a-zA-Z0-9 _-]/g, "")
 				.trim();
 			logMessage(
-				`Creating Knowledge Source: '${sanitizedName}' with ${allChunksForGroup.length} chunks.`,
+				`Creating Single Knowledge Source: '${sanitizedName}' with ${allChunksForGroup.length} chunks.`,
 			);
 
 			try {
 				const { knowledgeSourceId } = await api.createKnowledgeSource({
 					name: sanitizedName || "Untitled Source",
-					description: `Contentful group: ${groupName}. Includes ${entriesInGroup.length} entries.`,
+					description: `Contentful Import. Main Topic: ${mainTopicTag}, Sub-Topic: ${subTopicTagId}. Entries: ${entriesInGroup.length}.`,
 					tags: sourceTags,
 					chunkCount: allChunksForGroup.length,
 				});
