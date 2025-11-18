@@ -1,7 +1,7 @@
 {
 	"name": "contentful-knowledge-connector",
-	"version": "3.1.0",
-	"description": "Contentful Knowledge Connector Extension with advanced parsing, tag filtering, and LLM chunking.",
+	"version": "3.2.0",
+	"description": "Advanced Contentful integration for Cognigy.AI. Features 4 Tag-based Knowledge Connectors for hierarchical imports, LLM Semantic Chunking, and Flow Nodes for real-time entry fetching.",
 	"main": "build/module.js",
 	"scripts": {
 		"build": "tsc",
@@ -11,7 +11,14 @@
 	"author": "TDC Erhverv",
 	"keywords": [
 		"contentful",
-		"knowledgeConnector"
+		"cognigy",
+		"knowledge-connector",
+		"flow-nodes",
+		"llm",
+		"azure-openai",
+		"rag",
+		"knowledge-source",
+		"tag-based"
 	],
 	"license": "ISC",
 	"dependencies": {
