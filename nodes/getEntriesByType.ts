@@ -2,8 +2,8 @@ import {
 	createNodeDescriptor,
 	type INodeFunctionBaseParams,
 } from "@cognigy/extension-tools";
-import { fetchData } from "../knowledge/utils"; 
-import { addToStorage } from "./node-utils";
+// CHANGED: Import fetchData from local node-utils, NOT knowledge/utils
+import { fetchData, addToStorage } from "./node-utils"; 
 
 export interface IGetEntriesByTypeParams extends INodeFunctionBaseParams {
 	config: {
@@ -11,13 +11,17 @@ export interface IGetEntriesByTypeParams extends INodeFunctionBaseParams {
 			spaceId: string;
 			accessToken: string;
 		};
-		environment: string;
 		contentTypeId: string;
 		storeLocation: string;
 		contextKey: string;
 		inputKey: string;
+		// New Fields
+		timeout: number;
+		retryAttempts: number;
+		cacheResult: boolean;
 	};
 }
+
 export const getEntriesByTypeNode = createNodeDescriptor({
 	type: "getEntriesByType",
 	defaultLabel: "Get Entries by Type",
@@ -32,16 +36,6 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 			type: "connection",
 			params: {
 				connectionType: "contentful",
-				required: true,
-			},
-		},
-		{
-			key: "environment",
-			label: "Environment",
-			type: "text",
-			defaultValue: "master",
-			description: "The Contentful environment (e.g. 'master' or 'staging')",
-			params: {
 				required: true,
 			},
 		},
@@ -87,6 +81,28 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 				value: "context",
 			},
 		},
+		// --- NEW: Execution & Caching Fields ---
+		{
+			key: "timeout",
+			type: "number",
+			label: "Timeout (ms)",
+			defaultValue: 8000,
+			description: "Abort the request if it takes longer than this (default 8000ms).",
+		},
+		{
+			key: "retryAttempts",
+			type: "number",
+			label: "Retry Attempts",
+			defaultValue: 0,
+			description: "Number of times to retry on network failure (default 0).",
+		},
+		{
+			key: "cacheResult",
+			type: "toggle",
+			label: "Cache Results",
+			defaultValue: false,
+			description: "If enabled, the node will not fetch data if the storage key already has a value.",
+		}
 	],
 	sections: [
 		{
@@ -95,26 +111,65 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 			defaultCollapsed: true,
 			fields: ["storeLocation", "inputKey", "contextKey"],
 		},
+		{
+			key: "execution",
+			label: "Execution & Caching",
+			defaultCollapsed: true,
+			fields: ["timeout", "retryAttempts", "cacheResult"],
+		},
 	],
 	form: [
 		{ type: "field", key: "connection" },
-		{ type: "field", key: "environment" },
 		{ type: "field", key: "contentTypeId" },
 		{ type: "section", key: "storage" },
+		{ type: "section", key: "execution" }, // Add new section to form
 	],
 	appearance: {
 		color: "#0078D4", 
 	},
 	function: async ({ cognigy, config }: INodeFunctionBaseParams) => {
 		const { api } = cognigy;
-		const { contentTypeId, connection, environment, storeLocation, contextKey, inputKey } = config as IGetEntriesByTypeParams["config"];
+		const { 
+			contentTypeId, 
+			connection, 
+			storeLocation, 
+			contextKey, 
+			inputKey,
+			timeout, 
+			retryAttempts, 
+			cacheResult 
+		} = config as IGetEntriesByTypeParams["config"];
+		
 		const { spaceId, accessToken } = connection;
 
-		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
+		// --- CACHING LOGIC ---
+		if (cacheResult) {
+			// Check if data exists in the target location
+			let existingData;
+			if (storeLocation === "context") {
+				// @ts-ignore: cognigy typing limitation
+				existingData = cognigy.context[contextKey];
+			} else {
+				// @ts-ignore
+				existingData = cognigy.input[inputKey];
+			}
+
+			// If data exists and is not an error object, return early
+			if (existingData && !existingData.error) {
+				return; // Skip fetch, use cached data
+			}
+		}
+
+		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/master/entries`;
 		const params = { content_type: contentTypeId };
 
 		try {
-			const response = await fetchData(url, accessToken, params);
+			// Use local fetchData with execution options
+			const response = await fetchData(url, accessToken, params, {
+				timeout: timeout,
+				retries: retryAttempts
+			});
+			
 			addToStorage({ api, storeLocation, contextKey, inputKey, data: response });
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
