@@ -2,8 +2,8 @@ import {
 	createNodeDescriptor,
 	type INodeFunctionBaseParams,
 } from "@cognigy/extension-tools";
-import { fetchData } from "../knowledge/utils"; 
-import { addToStorage } from "./node-utils";
+// CHANGED: Import from local node-utils
+import { fetchData, addToStorage } from "./node-utils";
 
 export interface IGetSingleEntryParams extends INodeFunctionBaseParams {
 	config: {
@@ -11,13 +11,17 @@ export interface IGetSingleEntryParams extends INodeFunctionBaseParams {
 			spaceId: string;
 			accessToken: string;
 		};
-		environment: string;
 		entryId: string;
 		storeLocation: string;
 		contextKey: string;
 		inputKey: string;
+		// New Fields
+		timeout: number;
+		retryAttempts: number;
+		cacheResult: boolean;
 	};
 }
+
 export const getSingleEntryNode = createNodeDescriptor({
 	type: "getSingleEntry",
 	defaultLabel: "Get Single Entry",
@@ -32,16 +36,6 @@ export const getSingleEntryNode = createNodeDescriptor({
 			type: "connection",
 			params: {
 				connectionType: "contentful",
-				required: true,
-			},
-		},
-		{
-			key: "environment",
-			label: "Environment",
-			type: "text",
-			defaultValue: "master",
-			description: "The Contentful environment (e.g. 'master' or 'staging')",
-			params: {
 				required: true,
 			},
 		},
@@ -87,6 +81,28 @@ export const getSingleEntryNode = createNodeDescriptor({
 				value: "context",
 			},
 		},
+		// --- NEW: Execution & Caching Fields ---
+		{
+			key: "timeout",
+			type: "number",
+			label: "Timeout (ms)",
+			defaultValue: 8000,
+			description: "Abort the request if it takes longer than this (default 8000ms).",
+		},
+		{
+			key: "retryAttempts",
+			type: "number",
+			label: "Retry Attempts",
+			defaultValue: 0,
+			description: "Number of times to retry on network failure (default 0).",
+		},
+		{
+			key: "cacheResult",
+			type: "toggle",
+			label: "Cache Results",
+			defaultValue: false,
+			description: "If enabled, the node will not fetch data if the storage key already has a value.",
+		}
 	],
 	sections: [
 		{
@@ -95,25 +111,62 @@ export const getSingleEntryNode = createNodeDescriptor({
 			defaultCollapsed: true,
 			fields: ["storeLocation", "inputKey", "contextKey"],
 		},
+		{
+			key: "execution",
+			label: "Execution & Caching",
+			defaultCollapsed: true,
+			fields: ["timeout", "retryAttempts", "cacheResult"],
+		},
 	],
 	form: [
 		{ type: "field", key: "connection" },
-		{ type: "field", key: "environment" },
 		{ type: "field", key: "entryId" },
 		{ type: "section", key: "storage" },
+		{ type: "section", key: "execution" }, // Add new section
 	],
 	appearance: {
 		color: "#0078D4", 
 	},
 	function: async ({ cognigy, config }: INodeFunctionBaseParams) => {
 		const { api } = cognigy;
-		const { entryId, connection, environment, storeLocation, contextKey, inputKey } = config as IGetSingleEntryParams["config"];
+		const { 
+			entryId, 
+			connection, 
+			storeLocation, 
+			contextKey, 
+			inputKey,
+			timeout,
+			retryAttempts,
+			cacheResult
+		} = config as IGetSingleEntryParams["config"];
+		
 		const { spaceId, accessToken } = connection;
 
-		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries/${entryId}`;
+		// --- CACHING LOGIC ---
+		if (cacheResult) {
+			let existingData;
+			if (storeLocation === "context") {
+				// @ts-ignore
+				existingData = cognigy.context[contextKey];
+			} else {
+				// @ts-ignore
+				existingData = cognigy.input[inputKey];
+			}
+
+			if (existingData && !existingData.error) {
+				return; 
+			}
+		}
+
+		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/master/entries/${entryId}`;
 
 		try {
-			const response = await fetchData(url, accessToken, {});
+			// Use local fetchData with execution options
+			const response = await fetchData(url, accessToken, {}, {
+				timeout: timeout,
+				retries: retryAttempts
+			});
+
 			addToStorage({ api, storeLocation, contextKey, inputKey, data: response });
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
