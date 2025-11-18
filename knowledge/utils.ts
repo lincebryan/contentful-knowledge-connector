@@ -111,6 +111,9 @@ export const fetchData = async (
 export interface IContentfulEntry {
 	sys: { id: string; contentType: { sys: { id: string } } };
 	fields: { [key: string]: any };
+	metadata?: {
+		tags: { sys: { id: string } }[];
+	};
 }
 export interface IContentfulIncludes {
 	Entry?: IContentfulEntry[];
@@ -126,17 +129,15 @@ export interface IContentfulResponse {
 const MAX_CHUNK_SIZE = 2000;
 
 /**
- * Fetches all entries for the Knowledge Connector function.
- * Includes filtering and deep-linking (include=10).
- *
- * *** UPDATED WITH HARD-CODED FIELD IDs ***
+ * Fetches entries using Metadata Tags for filtering.
+ * Replaces field-based filtering with Contentful's "metadata.tags.sys.id" filters.
  */
 export const getEntries = async (
 	baseUrl: string,
 	accessToken: string,
 	contentTypeId: string,
-	mainTopicValue?: string, // Field ID parameter removed
-	subTopicValue?: string, // Field ID parameter removed
+	mainTopicTag?: string, // e.g., "topic:Internet"
+	subTopicTag?: string, // e.g., "group:WiFi"
 ): Promise<IContentfulResponse> => {
 	const params: Record<string, string> = {
 		content_type: contentTypeId,
@@ -144,16 +145,18 @@ export const getEntries = async (
 		include: "10", // Include linked entries 10 levels deep
 	};
 
-	// --- FIX: Add the main topic filter if provided, using the hard-coded field ID "mainTopic" ---
-	if (mainTopicValue) {
-		params["fields.mainTopic"] = mainTopicValue;
+	// --- TAG BASED FILTERING LOGIC ---
+	if (mainTopicTag && subTopicTag) {
+		// If BOTH are present, use the [all] operator to enforce AND logic
+		params["metadata.tags.sys.id[all]"] = `${mainTopicTag},${subTopicTag}`;
+	} else if (mainTopicTag) {
+		// Only Main Topic
+		params["metadata.tags.sys.id[in]"] = mainTopicTag;
+	} else if (subTopicTag) {
+		// Only Sub Topic
+		params["metadata.tags.sys.id[in]"] = subTopicTag;
 	}
-
-	// --- FIX: Add the sub-topic filter if provided, using the hard-coded field ID "knowledgeGroup" ---
-	if (subTopicValue) {
-		params["fields.knowledgeGroup"] = subTopicValue;
-	}
-	// -----------------------------------------------------------------------------------------
+	// --------------------------------
 
 	const response: IContentfulResponse = await fetchData(
 		baseUrl,
@@ -161,6 +164,23 @@ export const getEntries = async (
 		params,
 	);
 	return response || { items: [], includes: { Entry: [], Asset: [] } };
+};
+
+/**
+ * Helper to find a tag starting with a specific prefix (e.g. "group:")
+ * Returns the full tag ID (e.g. "group:WiFi") or null.
+ */
+export const getTagByPrefix = (
+	entry: IContentfulEntry,
+	prefix: string,
+): string | null => {
+	if (!entry.metadata || !entry.metadata.tags) return null;
+
+	const foundTag = entry.metadata.tags.find((tag: any) =>
+		tag.sys.id.startsWith(prefix),
+	);
+
+	return foundTag ? foundTag.sys.id : null;
 };
 
 // --- START: Advanced Content Renderer ---
