@@ -6,21 +6,20 @@ import {
 	assembleContentFromEntry,
 	chunkWithRecursiveSplitter,
 	getEntries,
+	getTagByPrefix,
 	IContentfulEntry,
 	IContentfulResponse,
 	logMessage,
-} from "./utils"; // This must be the hard-coded utils-v7.ts file
+} from "./utils";
 import axios from "axios";
 import { z } from "zod";
 
-// --- Zod Schema to validate the LLM's output ---
 const LlmChunkResponseSchema = z.object({
 	chunks: z.array(z.string()),
 });
 
-// --- Interface for this connector's config fields ---
 interface IImportUnstructuredConfig {
-	connection: { // This is the Contentful connection
+	connection: { 
 		spaceId: string;
 		accessToken: string;
 	};
@@ -28,29 +27,24 @@ interface IImportUnstructuredConfig {
 	contentTypeId: string;
 	titleFieldId: string;
 	modulesFieldId: string;
-	// --- Optional Filters (using hard-coded field IDs) ---
-	mainTopicValue?: string;
-	subTopicValue?: string;
-	// --------------------------------------------------
+	// --- Tag Filters ---
+	mainTopicTag?: string;
+	subTopicTag?: string;
+	// -------------------
 	additionalTags?: string[];
 	chunkingStrategy: "recursive" | "llm";
-	azureLlmConnection?: { // This is the Azure connection
+	azureLlmConnection?: { 
 		apiKey: string;
 	};
-	azureCustomEndpointUrl?: string; // The full URL for the LLM call
+	azureCustomEndpointUrl?: string; 
 	llmChunkingPrompt?: string;
 }
-
-// --- HARD-CODED FIELD IDs ---
-const MAIN_TOPIC_FIELD_ID = "mainTopic";
-const SUB_TOPIC_FIELD_ID = "knowledgeGroup";
-// -----------------------------
 
 export const importUnstructuredConnector = createKnowledgeConnector({
 	type: "importUnstructured",
 	label: "4. Import Unstructured (Advanced)",
 	summary:
-		"Imports entries with advanced options for filtering and LLM chunking.",
+		"Imports entries with advanced options for Tag filtering and LLM chunking.",
 	fields: [
 		{
 			key: "connection",
@@ -103,20 +97,20 @@ export const importUnstructuredConnector = createKnowledgeConnector({
 				required: true,
 			},
 		},
-		// --- Optional Filters (Hard-coded) ---
+		// --- Optional Filters ---
 		{
-			key: "mainTopicValue",
-			label: "Main Topic Value (Optional Filter)",
+			key: "mainTopicTag",
+			label: "Main Topic Tag ID (Optional)",
 			type: "text",
 			description:
-				"Optional. The value to filter for (e.g., 'Internet'). Uses the 'mainTopic' field.",
+				"The Tag ID to filter for (e.g., 'topic:Internet').",
 		},
 		{
-			key: "subTopicValue",
-			label: "Sub-Topic Value (Optional Filter)",
+			key: "subTopicTag",
+			label: "Sub-Topic Tag ID (Optional)",
 			type: "text",
 			description:
-				"Optional. The value to filter for (e.g., 'Wi-Fi'). Uses the 'knowledgeGroup' field.",
+				"The Tag ID to filter for (e.g., 'group:WiFi').",
 		},
 		// --- LLM Chunking Strategy ---
 		{
@@ -158,7 +152,7 @@ export const importUnstructuredConnector = createKnowledgeConnector({
 			label: "Azure Custom Endpoint URL",
 			type: "text",
 			description:
-				"The full API endpoint for your Azure OpenAI deployment (e.g., 'https://.../chat/completions?api-version=...').",
+				"The full API endpoint for your Azure OpenAI deployment.",
 			params: {
 				required: true,
 			},
@@ -213,8 +207,8 @@ Here is the document to chunk:
 		{ type: "field", key: "contentTypeId" },
 		{ type: "field", key: "titleFieldId" },
 		{ type: "field", key: "modulesFieldId" },
-		{ type: "field", key: "mainTopicValue" },
-		{ type: "field", key: "subTopicValue" },
+		{ type: "field", key: "mainTopicTag" },
+		{ type: "field", key: "subTopicTag" },
 		{ type: "field", key: "chunkingStrategy" },
 		{ type: "field", key: "azureLlmConnection" },
 		{ type: "field", key: "azureCustomEndpointUrl" },
@@ -223,15 +217,13 @@ Here is the document to chunk:
 	],
 	// --- Main Import Function ---
 	function: async ({ api, config }) => {
-		
-		// Use 'unknown' cast to satisfy TypeScript v4
 		const {
 			environment,
 			contentTypeId,
 			titleFieldId,
 			modulesFieldId,
-			mainTopicValue,
-			subTopicValue,
+			mainTopicTag,
+			subTopicTag,
 			additionalTags = [],
 			chunkingStrategy,
 			azureLlmConnection,
@@ -239,7 +231,6 @@ Here is the document to chunk:
 			llmChunkingPrompt,
 		} = config as unknown as IImportUnstructuredConfig;
 
-		// Get Contentful Connection
 		const contentfulConnection = (config as any).connection;
 		const { spaceId, accessToken } = contentfulConnection;
 
@@ -247,7 +238,6 @@ Here is the document to chunk:
 			throw new Error("Contentful Connection details (spaceId, accessToken) are missing.");
 		}
 
-		// Validate LLM config if strategy is selected
 		if (chunkingStrategy === "llm") {
 			if (!azureLlmConnection || !azureLlmConnection.apiKey) {
 				throw new Error("Azure OpenAI Connection (with API Key) is missing.");
@@ -260,14 +250,14 @@ Here is the document to chunk:
 		const baseUrl = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 
 		try {
-			// --- 1. Get All Entries (with optional filters) ---
+			// --- 1. Get All Entries (with optional tag filters) ---
 			logMessage(`Fetching all entries for Content Type: ${contentTypeId}`);
 			const response: IContentfulResponse = await getEntries(
 				baseUrl,
 				accessToken,
 				contentTypeId,
-				mainTopicValue,  // Optional filter
-				subTopicValue,   // Optional filter
+				mainTopicTag,  
+				subTopicTag,   
 			);
 
 			if (!response.items || response.items.length === 0) {
@@ -277,14 +267,11 @@ Here is the document to chunk:
 			logMessage(`Found ${response.items.length} entries to process.`);
 
 			// --- 2. Group Entries ---
-			// We group by the 'knowledgeGroup' field.
-			// If an entry doesn't have that field, it will be grouped under 'Uncategorized'.
 			const groupedEntries = new Map<string, IContentfulEntry[]>();
 			for (const entry of response.items) {
-				let groupName: string;
-				
-				// Use hard-coded Sub-Topic field for grouping
-				groupName = entry.fields[SUB_TOPIC_FIELD_ID] || "Uncategorized";
+				// Default behavior: try to group by 'group:' tag if available
+				const fullTag = getTagByPrefix(entry, "group:");
+				const groupName = fullTag ? fullTag.replace("group:", "") : "Uncategorized";
 
 				if (!groupedEntries.has(groupName)) {
 					groupedEntries.set(groupName, []);
@@ -299,14 +286,13 @@ Here is the document to chunk:
 				let allChunksForGroup: Omit<IKnowledge.CreateKnowledgeChunkParams, "knowledgeSourceId">[] = [];
 				const sourceTags = ["contentful", contentTypeId, ...additionalTags];
 
-				// Find the Main Topic from the *first* entry in the group to use as a tag
-				// (Assumes all entries in a group have the same Main Topic)
-				const mainTopicTag = entriesInGroup[0].fields[MAIN_TOPIC_FIELD_ID];
-				if (mainTopicTag) {
-					sourceTags.push(mainTopicTag);
+				// Try to find main topic tag from first entry
+				const mainTopic = getTagByPrefix(entriesInGroup[0], "topic:");
+				if (mainTopic) {
+					sourceTags.push(mainTopic);
 				}
 
-				// --- 4. Assemble & Chunk all entries in the group ---
+				// --- 4. Assemble & Chunk ---
 				for (const entry of entriesInGroup) {
 					try {
 						const entryTitle = entry.fields[titleFieldId] || "Untitled";
@@ -331,14 +317,10 @@ Here is the document to chunk:
 							logMessage(`Sending full text of '${entryTitle}' to LLM for chunking.`);
 							const finalPrompt = llmChunkingPrompt!.replace("{{text_to_chunk}}", fullText);
 							
-							// Call Azure OpenAI API using axios
 							const llmResponse = await axios.post(
 								azureCustomEndpointUrl!,
 								{
 									messages: [{ role: "user", content: finalPrompt }],
-									// Note: "response_format" is for newer API versions.
-									// We send the prompt assuming the custom URL handles the API version.
-									// If this fails, you may need to adjust the prompt or API call.
 									temperature: 0.2,
 									max_tokens: 4096, 
 								},
@@ -355,7 +337,6 @@ Here is the document to chunk:
 								throw new Error("LLM returned an empty response.");
 							}
 
-							// Try to parse the JSON, which might be inside markdown
 							let jsonString = llmContent;
 							if (llmContent.includes("```json")) {
 								jsonString = llmContent.split("```json")[1].split("```")[0].trim();
@@ -368,16 +349,14 @@ Here is the document to chunk:
 								throw new Error(`LLM returned invalid JSON format: ${validationResult.error.message}`);
 							}
 							
-							// Add prefix to LLM chunks
 							chunkStrings = validationResult.data.chunks.map(chunk => `${chunkPrefix}${chunk}`);
 							logMessage(`LLM returned ${chunkStrings.length} semantic chunks.`);
 
 						} else {
-							// --- RECURSIVE SPLITTER (Default) ---
+							// --- RECURSIVE SPLITTER ---
 							chunkStrings = await chunkWithRecursiveSplitter(fullText, chunkPrefix);
 						}
 
-						// Map to the chunk objects (without knowledgeSourceId)
 						const formattedChunks = chunkStrings.map((chunkText, index) => ({
 							text: chunkText,
 							data: {
@@ -391,9 +370,9 @@ Here is the document to chunk:
 					} catch (chunkError) {
 						logMessage(`Error processing entry ${entry.sys.id}: ${(chunkError as Error).message}`, "error");
 					}
-				} // End of for...of entriesInGroup
+				}
 
-				// --- 5. Create Knowledge Source for the Group ---
+				// --- 5. Create Source ---
 				if (allChunksForGroup.length === 0) {
 					logMessage(`No chunks created for group: ${groupName}, skipping.`);
 					continue;
@@ -410,7 +389,6 @@ Here is the document to chunk:
 						chunkCount: allChunksForGroup.length,
 					});
 
-					// --- 6. Add all Chunks to the new Source ---
 					for (const [index, chunk] of allChunksForGroup.entries()) {
 						try {
 							await api.createKnowledgeChunk({
@@ -424,7 +402,7 @@ Here is the document to chunk:
 				} catch (sourceError) {
 					logMessage(`Error creating source "${sanitizedName}". Reason: ${(sourceError as Error).message}`, "error");
 				}
-			} // End of for...of groupedEntries
+			}
 		} catch (error) {
 			logMessage(`Failed to import from Contentful: ${(error as Error).message}`, "error");
 			throw new Error(`Failed to import from Contentful: ${(error as Error).message}`);
