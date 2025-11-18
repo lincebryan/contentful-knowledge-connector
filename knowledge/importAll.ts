@@ -6,10 +6,11 @@ import {
 	assembleContentFromEntry,
 	chunkWithRecursiveSplitter,
 	getEntries,
+	getTagByPrefix,
 	IContentfulEntry,
 	IContentfulResponse,
 	logMessage,
-} from "./utils"; // This must be the utils.ts file with hard-coded field IDs
+} from "./utils";
 
 // --- Interface for this connector's config fields ---
 interface IImportAllConfig {
@@ -21,21 +22,15 @@ interface IImportAllConfig {
 	contentTypeId: string;
 	titleFieldId: string;
 	modulesFieldId: string;
+	subTopicTagPrefix: string; // New field for tag prefix
 	additionalTags?: string[];
 }
-
-// --- HARD-CODED FIELD IDs ---
-// These are now standardized based on your Contentful model
-// We get these values from the entry fields and use them for grouping/tagging
-const MAIN_TOPIC_FIELD_ID = "mainTopic";
-const SUB_TOPIC_FIELD_ID = "knowledgeGroup";
-// -----------------------------
 
 export const importAllConnector = createKnowledgeConnector({
 	type: "importAllKnowledge",
 	label: "1. Import All Knowledge Stores",
 	summary:
-		"Imports all entries of a Content Type. Groups entries into Knowledge Sources based on the 'knowledgeGroup' field.",
+		"Imports all entries of a Content Type. Groups entries into Knowledge Sources based on a Sub-Topic tag (e.g. 'group:WiFi').",
 	fields: [
 		{
 			key: "connection",
@@ -89,6 +84,17 @@ export const importAllConnector = createKnowledgeConnector({
 			},
 		},
 		{
+			key: "subTopicTagPrefix",
+			label: "Sub-Topic Tag Prefix",
+			type: "text",
+			description:
+				"The prefix used to identify the grouping tag (e.g., for 'group:WiFi', the prefix is 'group:').",
+			defaultValue: "group:",
+			params: {
+				required: true,
+			},
+		},
+		{
 			key: "additionalTags",
 			label: "Additional Source Tags (Optional)",
 			type: "chipInput",
@@ -103,17 +109,18 @@ export const importAllConnector = createKnowledgeConnector({
 		{ type: "field", key: "contentTypeId" },
 		{ type: "field", key: "titleFieldId" },
 		{ type: "field", key: "modulesFieldId" },
+		{ type: "field", key: "subTopicTagPrefix" },
 		{ type: "field", key: "additionalTags" },
 	],
 
 	// --- Main Import Function ---
 	function: async ({ api, config }) => {
-		// Use 'unknown' cast to satisfy TypeScript v4
 		const {
 			environment,
 			contentTypeId,
 			titleFieldId,
 			modulesFieldId,
+			subTopicTagPrefix,
 			additionalTags = [],
 		} = config as unknown as IImportAllConfig;
 
@@ -131,14 +138,14 @@ export const importAllConnector = createKnowledgeConnector({
 		try {
 			// --- 1. Get All Entries ---
 			logMessage(`Fetching all entries for Content Type: ${contentTypeId}`);
-			// We pass 'undefined' for mainTopicValue and subTopicValue to skip filtering
-			// This now uses the 5-argument version of getEntries
+			
+			// We pass 'undefined' to skip filtering, fetching everything
 			const response: IContentfulResponse = await getEntries(
 				baseUrl,
 				accessToken,
 				contentTypeId,
-				undefined, // No Main Topic filter
-				undefined, // No Sub-Topic filter
+				undefined, 
+				undefined
 			);
 
 			if (!response.items || response.items.length === 0) {
@@ -147,12 +154,15 @@ export const importAllConnector = createKnowledgeConnector({
 			}
 			logMessage(`Found ${response.items.length} entries to process.`);
 
-			// --- 2. Group Entries ---
-			// We group entries based on the hard-coded SUB_TOPIC_FIELD_ID ("knowledgeGroup")
+			// --- 2. Group Entries by Tag ---
 			const groupedEntries = new Map<string, IContentfulEntry[]>();
+			
 			for (const entry of response.items) {
-				const groupName =
-					entry.fields[SUB_TOPIC_FIELD_ID] || "Uncategorized";
+				// Use the helper to find the tag that starts with "group:" (or custom prefix)
+				const fullTag = getTagByPrefix(entry, subTopicTagPrefix);
+				
+				// Strip the prefix to get the clean name: "group:WiFi" -> "WiFi"
+				const groupName = fullTag ? fullTag.replace(subTopicTagPrefix, "") : "Uncategorized";
 
 				if (!groupedEntries.has(groupName)) {
 					groupedEntries.set(groupName, []);
@@ -169,7 +179,7 @@ export const importAllConnector = createKnowledgeConnector({
 					IKnowledge.CreateKnowledgeChunkParams,
 					"knowledgeSourceId"
 				>[] = [];
-				// Base tags
+				
 				const sourceTags = ["contentful", contentTypeId, ...additionalTags];
 
 				// --- 4. Assemble & Chunk all entries in the group ---
@@ -177,14 +187,13 @@ export const importAllConnector = createKnowledgeConnector({
 					try {
 						const entryTitle = entry.fields[titleFieldId] || "Untitled";
 
-						// --- Tagging ---
-						// On the first entry of the group, find the Main Topic (from "mainTopic" field) and add it as a tag
-						// We only need to do this once, so we do it for the first entry (index 0)
+						// --- Tagging: Find "topic:" tag to add as metadata ---
+						// We assume entries in the same group likely share the main topic, 
+						// or we just add whatever topic tag this specific entry has.
 						if (entryIndex === 0) {
-							const mainTopic =
-								entry.fields[MAIN_TOPIC_FIELD_ID] || null;
-							if (mainTopic) {
-								sourceTags.push(mainTopic);
+							const mainTopicTag = getTagByPrefix(entry, "topic:");
+							if (mainTopicTag) {
+								sourceTags.push(mainTopicTag);
 							}
 						}
 
@@ -227,7 +236,7 @@ export const importAllConnector = createKnowledgeConnector({
 							"error",
 						);
 					}
-				} // End of for...of entriesInGroup
+				}
 
 				// --- 5. Create Knowledge Source for the Group ---
 				if (allChunksForGroup.length === 0) {
@@ -252,7 +261,6 @@ export const importAllConnector = createKnowledgeConnector({
 						chunkCount: allChunksForGroup.length,
 					});
 
-					// --- 6. Add all Chunks to the new Source ---
 					for (const [index, chunk] of allChunksForGroup.entries()) {
 						try {
 							await api.createKnowledgeChunk({
@@ -278,7 +286,7 @@ export const importAllConnector = createKnowledgeConnector({
 						"error",
 					);
 				}
-			} // End of for...of groupedEntries
+			} 
 		} catch (error) {
 			logMessage(
 				`Failed to import from Contentful: ${(error as Error).message}`,
