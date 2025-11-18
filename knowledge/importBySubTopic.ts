@@ -6,12 +6,10 @@ import {
 	assembleContentFromEntry,
 	chunkWithRecursiveSplitter,
 	getEntries,
-	IContentfulEntry,
 	IContentfulResponse,
 	logMessage,
-} from "./utils"; // This must be the hard-coded utils-v7.ts file
+} from "./utils";
 
-// --- Interface for this connector's config fields ---
 interface IImportBySubTopicConfig {
 	connection: {
 		spaceId: string;
@@ -21,36 +19,27 @@ interface IImportBySubTopicConfig {
 	contentTypeId: string;
 	titleFieldId: string;
 	modulesFieldId: string;
-	mainTopicValue: string; // Required dropdown
-	subTopicValue: string; // Required text field
+	mainTopicTag: string; // From Dropdown
+	subTopicTagId: string; // Exact Tag ID (e.g. "group:WiFi")
 	additionalTags?: string[];
 }
 
-// --- HARD-CODED FIELD IDs ---
-// These are not needed in the UI, but the function logic
-// still uses them for tagging and grouping.
-const MAIN_TOPIC_FIELD_ID = "mainTopic";
-const SUB_TOPIC_FIELD_ID = "knowledgeGroup";
-// -----------------------------
-
-// --- Main Topic Options for the Dropdown ---
 const mainTopicOptions = [
-	{ label: "Internet", value: "Internet" },
-	{ label: "Mobil", value: "Mobil" },
-	{ label: "Abonnement", value: "Abonnement" },
-	{ label: "Faktura & betaling", value: "Faktura & betaling" },
-	{ label: "Selvbetjening", value: "Selvbetjening" },
-	{ label: "Mobilt bredbånd", value: "Mobilt bredbånd" },
-	{ label: "Telefoniløsning", value: "Telefoniløsning" },
-	{ label: "Fastnettelefoni", value: "Fastnettelefoni" },
+	{ label: "Internet", value: "topic:Internet" },
+	{ label: "Mobil", value: "topic:Mobil" },
+	{ label: "Abonnement", value: "topic:Abonnement" },
+	{ label: "Faktura & betaling", value: "topic:Faktura & betaling" },
+	{ label: "Selvbetjening", value: "topic:Selvbetjening" },
+	{ label: "Mobilt bredbånd", value: "topic:Mobilt bredbånd" },
+	{ label: "Telefoniløsning", value: "topic:Telefoniløsning" },
+	{ label: "Fastnettelefoni", value: "topic:Fastnettelefoni" },
 ];
-// -------------------------------------------
 
 export const importBySubTopicConnector = createKnowledgeConnector({
 	type: "importBySubTopic",
 	label: "3. Import Knowledge Source (by Sub-Topic)",
 	summary:
-		"Filters entries by a Main Topic and a specific Sub-Topic, creating a single Knowledge Source.",
+		"Filters entries by a Main Topic Tag and a specific Sub-Topic Tag, creating a single Knowledge Source.",
 	fields: [
 		{
 			key: "connection",
@@ -70,9 +59,8 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 				required: true,
 			},
 		},
-		// --- NEW: Main Topic Dropdown ---
 		{
-			key: "mainTopicValue",
+			key: "mainTopicTag",
 			label: "Main Topic",
 			type: "select",
 			description: "Select the Main Topic to filter by.",
@@ -81,18 +69,16 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 				options: mainTopicOptions,
 			},
 		},
-		// --- NEW: Sub-Topic Text Filter ---
 		{
-			key: "subTopicValue",
-			label: "Sub-Topic (Knowledge Group)",
+			key: "subTopicTagId",
+			label: "Sub-Topic Tag ID",
 			type: "text",
 			description:
-				"The exact name of the Sub-Topic to import (e.g., 'Wi-Fi').",
+				"The exact Tag ID of the Sub-Topic to import (e.g., 'group:WiFi').",
 			params: {
 				required: true,
 			},
 		},
-		// --- End of new fields ---
 		{
 			key: "contentTypeId",
 			label: "Content Type ID",
@@ -138,8 +124,8 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 	form: [
 		{ type: "field", key: "connection" },
 		{ type: "field", key: "environment" },
-		{ type: "field", key: "mainTopicValue" },
-		{ type: "field", key: "subTopicValue" }, // Field added to form
+		{ type: "field", key: "mainTopicTag" },
+		{ type: "field", key: "subTopicTagId" }, 
 		{ type: "field", key: "contentTypeId" },
 		{ type: "field", key: "titleFieldId" },
 		{ type: "field", key: "modulesFieldId" },
@@ -152,8 +138,8 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 			contentTypeId,
 			titleFieldId,
 			modulesFieldId,
-			mainTopicValue,
-			subTopicValue, // We get the specific sub-topic value
+			mainTopicTag,
+			subTopicTagId,
 			additionalTags = [],
 		} = config as unknown as IImportBySubTopicConfig;
 
@@ -166,7 +152,7 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 			);
 		}
 
-		if (!mainTopicValue || !subTopicValue) {
+		if (!mainTopicTag || !subTopicTagId) {
 			throw new Error(
 				"You must provide both a Main Topic and a Sub-Topic.",
 			);
@@ -175,16 +161,16 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 		const baseUrl = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 
 		try {
-			// --- 1. Get All Entries (Filtered by Main & Sub-Topic) ---
+			// --- 1. Get Entries Filtered by BOTH Tags ---
 			logMessage(
-				`Fetching entries for Main Topic '${mainTopicValue}' AND Sub-Topic '${subTopicValue}'`,
+				`Fetching entries for Main Topic '${mainTopicTag}' AND Sub-Topic '${subTopicTagId}'`,
 			);
 			const response: IContentfulResponse = await getEntries(
 				baseUrl,
 				accessToken,
 				contentTypeId,
-				mainTopicValue, // Filter by 'mainTopic' field
-				subTopicValue, // Filter by 'knowledgeGroup' field
+				mainTopicTag, 
+				subTopicTagId 
 			);
 
 			const entriesInGroup = response.items;
@@ -197,30 +183,27 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 			}
 			logMessage(`Found ${entriesInGroup.length} entries to process.`);
 
-			// --- 2. Group Entries (Not really needed, but good for consistency) ---
-			// Since we filtered by subTopicValue, all entries belong to one group.
-			// The groupName is the subTopicValue itself.
-			const groupName = subTopicValue;
+			// Use the exact sub-topic tag ID as the group name (stripped of potential prefix for safety, or raw)
+			// For simplicity, if it is "group:WiFi", let's make the name "WiFi"
+			const groupName = subTopicTagId.includes(":") ? subTopicTagId.split(":")[1] : subTopicTagId;
 
-			// --- 3. Process the Group ---
 			let allChunksForGroup: Omit<
 				IKnowledge.CreateKnowledgeChunkParams,
 				"knowledgeSourceId"
 			>[] = [];
-			// Base tags + add the Main Topic as a tag
+			
 			const sourceTags = [
 				"contentful",
 				contentTypeId,
-				mainTopicValue,
+				mainTopicTag,
 				...additionalTags,
 			];
 
-			// --- 4. Assemble & Chunk all entries in the group ---
+			// --- 2. Assemble & Chunk ---
 			for (const entry of entriesInGroup) {
 				try {
 					const entryTitle = entry.fields[titleFieldId] || "Untitled";
 
-					// --- Assembling ---
 					const fullText = await assembleContentFromEntry(
 						entry,
 						modulesFieldId,
@@ -234,14 +217,12 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 						continue;
 					}
 
-					// --- Chunking ---
 					const chunkPrefix = `Title: ${entryTitle}\n\n`;
 					const chunkStrings = await chunkWithRecursiveSplitter(
 						fullText,
 						chunkPrefix,
 					);
 
-					// Map to the chunk objects
 					const formattedChunks = chunkStrings.map((chunkText, index) => ({
 						text: chunkText,
 						data: {
@@ -259,14 +240,14 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 						"error",
 					);
 				}
-			} // End of for...of entriesInGroup
+			}
 
-			// --- 5. Create Knowledge Source for the Group ---
+			// --- 3. Create Knowledge Source ---
 			if (allChunksForGroup.length === 0) {
 				logMessage(
 					`No chunks created for group: ${groupName}, skipping.`,
 				);
-				return; // Exit function
+				return;
 			}
 
 			const sanitizedName = groupName
@@ -284,7 +265,6 @@ export const importBySubTopicConnector = createKnowledgeConnector({
 					chunkCount: allChunksForGroup.length,
 				});
 
-				// --- 6. Add all Chunks to the new Source ---
 				for (const [index, chunk] of allChunksForGroup.entries()) {
 					try {
 						await api.createKnowledgeChunk({
