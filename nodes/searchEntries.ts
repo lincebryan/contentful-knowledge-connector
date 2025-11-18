@@ -2,7 +2,7 @@ import {
 	createNodeDescriptor,
 	type INodeFunctionBaseParams,
 } from "@cognigy/extension-tools";
-// CHANGED: Import from local node-utils
+// CHECK: Using local node-utils only
 import { fetchData, addToStorage } from "./node-utils";
 
 export interface ISearchEntriesParams extends INodeFunctionBaseParams {
@@ -11,6 +11,7 @@ export interface ISearchEntriesParams extends INodeFunctionBaseParams {
 			spaceId: string;
 			accessToken: string;
 		};
+		environment: string;
 		query: string;
 		storeLocation: string;
 		contextKey: string;
@@ -36,6 +37,16 @@ export const searchEntriesNode = createNodeDescriptor({
 			type: "connection",
 			params: {
 				connectionType: "contentful",
+				required: true,
+			},
+		},
+		{
+			key: "environment",
+			label: "Environment",
+			type: "text",
+			defaultValue: "master",
+			description: "The Contentful environment (e.g. 'master' or 'staging')",
+			params: {
 				required: true,
 			},
 		},
@@ -120,9 +131,10 @@ export const searchEntriesNode = createNodeDescriptor({
 	],
 	form: [
 		{ type: "field", key: "connection" },
+		{ type: "field", key: "environment" },
 		{ type: "field", key: "query" },
 		{ type: "section", key: "storage" },
-		{ type: "section", key: "execution" }, // Add new section
+		{ type: "section", key: "execution" },
 	],
 	appearance: {
 		color: "#0078D4", 
@@ -132,6 +144,7 @@ export const searchEntriesNode = createNodeDescriptor({
 		const { 
 			query, 
 			connection, 
+			environment,
 			storeLocation, 
 			contextKey, 
 			inputKey,
@@ -158,7 +171,7 @@ export const searchEntriesNode = createNodeDescriptor({
 			}
 		}
 
-		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/master/entries`;
+		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 		const params = { query: query };
 
 		try {

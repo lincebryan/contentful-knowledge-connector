@@ -2,7 +2,7 @@ import {
 	createNodeDescriptor,
 	type INodeFunctionBaseParams,
 } from "@cognigy/extension-tools";
-// CHANGED: Import fetchData from local node-utils, NOT knowledge/utils
+// CHECK: Using local node-utils only
 import { fetchData, addToStorage } from "./node-utils"; 
 
 export interface IGetEntriesByTypeParams extends INodeFunctionBaseParams {
@@ -11,6 +11,7 @@ export interface IGetEntriesByTypeParams extends INodeFunctionBaseParams {
 			spaceId: string;
 			accessToken: string;
 		};
+		environment: string;
 		contentTypeId: string;
 		storeLocation: string;
 		contextKey: string;
@@ -36,6 +37,16 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 			type: "connection",
 			params: {
 				connectionType: "contentful",
+				required: true,
+			},
+		},
+		{
+			key: "environment",
+			label: "Environment",
+			type: "text",
+			defaultValue: "master",
+			description: "The Contentful environment (e.g. 'master' or 'staging')",
+			params: {
 				required: true,
 			},
 		},
@@ -120,9 +131,10 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 	],
 	form: [
 		{ type: "field", key: "connection" },
+		{ type: "field", key: "environment" },
 		{ type: "field", key: "contentTypeId" },
 		{ type: "section", key: "storage" },
-		{ type: "section", key: "execution" }, // Add new section to form
+		{ type: "section", key: "execution" },
 	],
 	appearance: {
 		color: "#0078D4", 
@@ -132,12 +144,13 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 		const { 
 			contentTypeId, 
 			connection, 
+			environment, 
 			storeLocation, 
 			contextKey, 
 			inputKey,
-			timeout, 
-			retryAttempts, 
-			cacheResult 
+			timeout,
+			retryAttempts,
+			cacheResult
 		} = config as IGetEntriesByTypeParams["config"];
 		
 		const { spaceId, accessToken } = connection;
@@ -160,7 +173,7 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 			}
 		}
 
-		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/master/entries`;
+		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 		const params = { content_type: contentTypeId };
 
 		try {
