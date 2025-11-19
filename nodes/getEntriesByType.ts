@@ -2,7 +2,6 @@ import {
 	createNodeDescriptor,
 	type INodeFunctionBaseParams,
 } from "@cognigy/extension-tools";
-// CHECK: Using local node-utils only
 import { fetchData, addToStorage } from "./node-utils"; 
 
 export interface IGetEntriesByTypeParams extends INodeFunctionBaseParams {
@@ -16,10 +15,6 @@ export interface IGetEntriesByTypeParams extends INodeFunctionBaseParams {
 		storeLocation: string;
 		contextKey: string;
 		inputKey: string;
-		// New Fields
-		timeout: number;
-		retryAttempts: number;
-		cacheResult: boolean;
 	};
 }
 
@@ -92,28 +87,6 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 				value: "context",
 			},
 		},
-		// --- NEW: Execution & Caching Fields ---
-		{
-			key: "timeout",
-			type: "number",
-			label: "Timeout (ms)",
-			defaultValue: 8000,
-			description: "Abort the request if it takes longer than this (default 8000ms).",
-		},
-		{
-			key: "retryAttempts",
-			type: "number",
-			label: "Retry Attempts",
-			defaultValue: 0,
-			description: "Number of times to retry on network failure (default 0).",
-		},
-		{
-			key: "cacheResult",
-			type: "toggle",
-			label: "Cache Results",
-			defaultValue: false,
-			description: "If enabled, the node will not fetch data if the storage key already has a value.",
-		}
 	],
 	sections: [
 		{
@@ -122,19 +95,12 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 			defaultCollapsed: true,
 			fields: ["storeLocation", "inputKey", "contextKey"],
 		},
-		{
-			key: "execution",
-			label: "Execution & Caching",
-			defaultCollapsed: true,
-			fields: ["timeout", "retryAttempts", "cacheResult"],
-		},
 	],
 	form: [
 		{ type: "field", key: "connection" },
 		{ type: "field", key: "environment" },
 		{ type: "field", key: "contentTypeId" },
 		{ type: "section", key: "storage" },
-		{ type: "section", key: "execution" },
 	],
 	appearance: {
 		color: "#0078D4", 
@@ -147,42 +113,16 @@ export const getEntriesByTypeNode = createNodeDescriptor({
 			environment, 
 			storeLocation, 
 			contextKey, 
-			inputKey,
-			timeout,
-			retryAttempts,
-			cacheResult
+			inputKey 
 		} = config as IGetEntriesByTypeParams["config"];
 		
 		const { spaceId, accessToken } = connection;
-
-		// --- CACHING LOGIC ---
-		if (cacheResult) {
-			// Check if data exists in the target location
-			let existingData;
-			if (storeLocation === "context") {
-				// @ts-ignore: cognigy typing limitation
-				existingData = cognigy.context[contextKey];
-			} else {
-				// @ts-ignore
-				existingData = cognigy.input[inputKey];
-			}
-
-			// If data exists and is not an error object, return early
-			if (existingData && !existingData.error) {
-				return; // Skip fetch, use cached data
-			}
-		}
 
 		const url = `https://cdn.contentful.com/spaces/${spaceId}/environments/${environment}/entries`;
 		const params = { content_type: contentTypeId };
 
 		try {
-			// Use local fetchData with execution options
-			const response = await fetchData(url, accessToken, params, {
-				timeout: timeout,
-				retries: retryAttempts
-			});
-			
+			const response = await fetchData(url, accessToken, params);
 			addToStorage({ api, storeLocation, contextKey, inputKey, data: response });
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
