@@ -4,10 +4,12 @@
 
 This extension provides a powerful and resilient integration with **Contentful**, designed to import complex, modular content into Cognigy.AI as Knowledge Sources and to fetch Contentful entries directly within a Flow.
 
-It goes far beyond simple entry fetching by including advanced features such as:
+It utilizes a **Tag-Based Architecture** to organize content, allowing you to maintain a clean Content Model in Contentful while enjoying powerful hierarchical grouping in Cognigy.AI.
+
+Features:
 * **Intelligent Content Assembly:** Recursively parses modular content architectures (Rich Text, embedded components, and tables) into a single, clean text document.
-* **Hierarchical Importing:** Provides four distinct Knowledge Connectors for granular control over what you import, from importing everything to filtering by main topic and sub-topic.
-* **Flow-Based Fetching:** Includes three Flow Nodes to fetch or search for Contentful entries live in your conversation.
+* **Tag-Based Hierarchical Importing:** Uses Contentful Metadata Tags to filter and group content (e.g., Main Topic tags and Sub-Topic tags) without polluting your content model with extra fields.
+* **Flow-Based Fetching:** Includes three Flow Nodes to fetch or search for Contentful entries live in your conversation, now with Environment support.
 * **Dual Chunking Strategy:** Offers both a standard, fast `Recursive Splitter` (via LangChain) and an advanced `LLM Semantic Chunking` strategy using Azure OpenAI.
 * **Resilient & Robust:** All API calls use a `fetch-retry` mechanism to automatically handle network errors or Contentful's rate limits.
 
@@ -21,10 +23,10 @@ It goes far beyond simple entry fetching by including advanced features such as:
     * `Get Entries by Type`: Fetches all entries matching a specific Content Type ID.
     * `Search Entries`: Performs a full-text search across your Contentful space.
 * **Knowledge Connectors:**
-    * `Import All Knowledge`: Imports all entries of a Content Type, grouping them into Knowledge Sources based on a "Sub-Topic" field.
-    * `Import by Main Topic`: Filters entries by a "Main Topic" (e.g., "Internet") and then groups them by "Sub-Topic".
-    * `Import by Sub-Topic`: Filters entries by *both* a "Main Topic" and a specific "Sub-Topic" to create a single, targeted Knowledge Source.
-    * `Import Unstructured (Advanced)`: The most powerful connector, offering filters *and* the choice between recursive and LLM-powered semantic chunking.
+    * `Import All Knowledge`: Imports all entries of a Content Type, grouping them into Knowledge Sources based on a "Sub-Topic" tag.
+    * `Import by Main Topic`: Filters entries by a "Main Topic" tag (e.g., `topic:Internet`) and then groups them by "Sub-Topic" tag.
+    * `Import by Sub-Topic`: Filters entries by *both* a "Main Topic" and a specific "Sub-Topic" tag to create a single, targeted Knowledge Source.
+    * `Import Unstructured (Advanced)`: The most powerful connector, offering tag filters *and* the choice between recursive and LLM-powered semantic chunking.
 
 ---
 
@@ -57,31 +59,31 @@ This connection is **only required** if you use the "LLM Semantic Chunking" stra
 
 You can use these nodes directly in your Flows to fetch content dynamically. All nodes provide a "Storage Option" section to save the result to `Input` or `Context`.
 
+#### Common Settings (All Nodes)
+* **Environment:** Select the Contentful environment (Default: `master`).
+* **Storage:** Choose to store the result in `Input` or `Context`.
+
 #### Node: Get Single Entry
 * **Description:** Fetches a single Contentful entry using its unique Entry ID.
-* **Configuration:**
-    * `Contentful Connection`: Your configured connection.
-    * `Entry ID`: The ID of the entry to retrieve (e.g., `1a2b3c4d5e`).
+* **Fields:** `Entry ID`
 
 #### Node: Get Entries by Type
 * **Description:** Fetches a collection of entries that match a specific Content Type ID.
-* **Configuration:**
-    * `Contentful Connection`: Your configured connection.
-    * `Content Type ID`: The API ID of the content type (e.g., `article` or `faqEntry`).
+* **Fields:** `Content Type ID`
 
 #### Node: Search Entries
 * **Description:** Performs a full-text search over all entries in your Contentful space.
-* **Configuration:**
-    * `Contentful Connection`: Your configured connection.
-    * `Query`: The full-text search query (e.g., "how do I reset my password").
+* **Fields:** `Query` (The text to search for).
+
+---
 
 ### Knowledge Connectors
 
-This extension provides four distinct Knowledge Connectors, allowing you to fine-tune your knowledge import strategy and work around the 100-source limit.
+This extension uses a **Tag-Based** strategy for importing. It looks for tags on your entries to determine which "Knowledge Source" the content belongs to.
 
 **Common Configuration Fields:**
 * `Contentful Connection`: Your configured connection.
-* `Environment`: The Contentful environment (e.g., `master` or `staging`).
+* `Environment`: The Contentful environment (Default: `master`).
 * `Content Type ID`: The API ID of your main "page" content type (e.g., `article`).
 * `Title Field ID`: The API ID of the field to use as the entry's title (e.g., `title`).
 * `Modular Content Field ID`: The API ID of the Rich Text or Component List field (e.g., `body`).
@@ -90,112 +92,65 @@ This extension provides four distinct Knowledge Connectors, allowing you to fine
 
 #### 1. Import All Knowledge Stores
 * **Label:** `1. Import All Knowledge Stores`
-* **Use Case:** Imports *all* entries of the specified Content Type. It then groups them into separate Knowledge Sources based on the value in their `knowledgeGroup` (Sub-Topic) field.
-* **Grouping:** Entries without a `knowledgeGroup` field are placed in an "Uncategorized" source.
+* **Use Case:** Imports *all* entries of the specified Content Type. It automatically groups them into separate Knowledge Sources based on their "Sub-Topic" tag.
+* **How it works:** It scans the tags of every entry. If it finds a tag starting with `group:` (e.g., `group:WiFi`), it assigns the entry to the "WiFi" Knowledge Source. Entries without a group tag go to "Uncategorized".
 
 ---
 
 #### 2. Import Knowledge Store (by Main Topic)
 * **Label:** `2. Import Knowledge Store (by Main Topic)`
-* **Use Case:** Imports entries that match a specific `mainTopic` (e.g., "Internet"). It then groups those entries into separate Knowledge Sources based on their `knowledgeGroup` field.
+* **Use Case:** Imports entries that have a specific "Main Topic" tag (e.g., `topic:Internet`). It then automatically groups those entries into separate Knowledge Sources based on their "Sub-Topic" tag (`group:`).
 * **Specific Fields:**
-    * `Main Topic`: A dropdown to select the `mainTopic` to filter by (e.g., "Internet", "Mobil", "Abonnement").
+    * `Main Topic`: A dropdown to select the Main Topic tag to filter by (e.g., "Internet" → maps to `topic:Internet`).
 
 ---
 
 #### 3. Import Knowledge Source (by Sub-Topic)
 * **Label:** `3. Import Knowledge Source (by Sub-Topic)`
-* **Use Case:** Creates *one single* Knowledge Source. It filters entries that match *both* a `mainTopic` and a specific `subTopicValue`.
+* **Use Case:** Creates *one single* Knowledge Source. It filters entries that match *both* a specific "Main Topic" tag AND a specific "Sub-Topic" tag.
 * **Specific Fields:**
-    * `Main Topic`: A dropdown to select the `mainTopic`.
-    * `Sub-Topic (Knowledge Group)`: A text field for the *exact* name of the Sub-Topic to import (e.g., "Wi-Fi").
+    * `Main Topic`: A dropdown to select the Main Topic tag.
+    * `Sub-Topic Tag ID`: The exact tag ID for the specific group you want to import (e.g., `group:WiFi`).
 
 ---
 
 #### 4. Import Unstructured (Advanced)
 * **Label:** `4. Import Unstructured (Advanced)`
-* **Use Case:** The most flexible connector. It can filter by `mainTopic` and/or `subTopicValue` and allows you to select your chunking strategy.
+* **Use Case:** The most flexible connector. It allows raw filtering by tag IDs and selecting your chunking strategy.
 * **Specific Fields:**
-    * `Main Topic Value (Optional Filter)`: A text field to filter by `mainTopic`.
-    * `Sub-Topic Value (Optional Filter)`: A text field to filter by `knowledgeGroup`.
+    * `Main Topic Tag ID (Optional)`: Filter by a specific tag ID (e.g., `topic:Internet`).
+    * `Sub-Topic Tag ID (Optional)`: Filter by a specific tag ID (e.g., `group:WiFi`).
     * `Chunking Strategy`:
         * **`Recursive Splitter (Fast & Free)`**: (Default) Uses LangChain's `RecursiveCharacterTextSplitter`.
         * **`LLM Semantic Chunking (Smarter)`**: Uses an Azure OpenAI model to split text based on meaning.
     * `Azure OpenAI Connection`: (If LLM selected) Your Azure connection.
-    * `Azure Custom Endpoint URL`: (If LLM selected) The *full* API endpoint for your Azure OpenAI deployment (e.g., `https://.../chat/completions?api-version=...`).
-    * `Semantic Chunking Prompt`: (If LLM selected) The prompt to instruct the LLM. It **must** include `{{text_to_chunk}}` and return a JSON object in the format `{"chunks": ["chunk1", "chunk2"]}`.
+    * `Azure Custom Endpoint URL`: (If LLM selected) The *full* API endpoint for your Azure OpenAI deployment.
 
 ---
 
-## 3. Technical Deep Dive: How It Works
+## 3. Technical Deep Dive
 
-The true power of this connector lies in its `utils.ts` file, which handles content processing.
+### A. Tag-Based Grouping Logic
+The extension relies on a naming convention for Contentful Tags to organize content.
+* **Main Topic Tags:** e.g., `topic:Internet`.
+* **Sub-Topic (Group) Tags:** e.g., `group:WiFi`.
+* **Logic:** The Connectors automatically detect tags starting with `group:` to determine the Knowledge Source name.
 
-### A. Intelligent Content Assembly
-
-When an entry is fetched, it is not simply "text." This connector intelligently assembles it.
-
-1.  **Finds Linked Components:** It first looks at the `Modular Content Field ID` (e.g., `body`). If this field is a list of linked entries (a modular page), it iterates through each one.
-2.  **Renders Components:** It uses a `renderComponent` function to convert known Contentful components into clean Markdown/text:
-    * `componentAccordion`: Renders as `## Title` followed by the accordion's body content.
-    * `componentTabs`: Recursively finds all `componentText` entries linked within the tabs and renders them.
-    * `componentText`: Renders as `### Title` followed by the tab's text content.
-    * `componentImage` / `embedded-asset-block`: Renders as `[Image: Description]`.
-3.  **Parses Rich Text:** It uses a `renderRichTextForLLM` function to parse standard Rich Text fields. This function is notable because it:
-    * Converts headings (`heading-1`, `heading-2`) into Markdown (`#`, `##`).
-    * Converts lists into Markdown bullet points (`*`).
-    * **Converts Rich Text tables into valid Markdown tables**, making them readable by LLMs.
-4.  **Combines Fields:** It combines the content from the main `body` field and an optional `sidebarContent` field into a single, cohesive document for chunking.
-
-### B. Dual Chunking Strategy
-
-Once the full text is assembled, it is passed to a chunker.
-
-1.  **Recursive Splitter (Default):**
-    * Uses `@langchain/textsplitters` (`RecursiveCharacterTextSplitter`).
-    * Splits text by character (`\n\n`, `\n`, ` `, ``) to respect paragraphs and sentences.
-    * Fast, free, and reliable.
-    * Chunk size is hard-coded to `2000` characters.
-
-2.  **LLM Semantic Chunking (Advanced):**
-    * Uses `axios` to make a POST request to your `azureCustomEndpointUrl`.
-    * Injects the assembled text into the `llmChunkingPrompt` (replacing `{{text_to_chunk}}`).
-    * The prompt (defined in `importUnstructured.ts`) instructs the LLM to act as an ingestion model and return a *specific JSON format*.
-    * Uses `zod` (`LlmChunkResponseSchema`) to validate the LLM's output. If the LLM returns invalid JSON, the import for that entry will fail, protecting your Knowledge Source from bad data.
+### B. Intelligent Content Assembly
+When an entry is fetched, it is assembled into a single Markdown document before chunking.
+* **Resolves References:** It recursively fetches linked entries (up to 10 levels deep) from the `Modular Content Field`.
+* **Renders Components:** Converts custom Contentful components (Accordions, Tabs) into clean Markdown headings and text.
+* **Parses Rich Text:** Converts headings, lists, and **Tables** into valid Markdown optimized for LLMs.
 
 ---
 
-## 4. Recommended Contentful Setup
-
-To use the powerful hierarchical grouping features, your main Content Type (e.g., `article`) should have two "Text" or "Symbol" fields:
-
-1.  **Main Topic:**
-    * **Name:** `Main Topic`
-    * **Field ID:** `mainTopic`
-2.  **Sub-Topic (Knowledge Group):**
-    * **Name:** `Knowledge Group`
-    * **Field ID:** `knowledgeGroup`
-
-#### Example:
-An article, "How to fix slow Wi-Fi", would have:
-
-* `mainTopic`: "Internet"
-* `knowledgeGroup`: "Wi-Fi"
-
-When you run an import:
-* **`Import All`** would find this entry and put its chunks into a Knowledge Source named `Wi-Fi`.
-* **`Import by Main Topic`** (set to "Internet") would find it and put it in the `Wi-Fi` source.
-* **`Import by Sub-Topic`** (set to "Internet" and "Wi-Fi") would find it and create a single `Wi-Fi` source with just this entry (and others like it).
-
----
-
-## 5. Installation
+## 4. Installation
 
 1.  **Install Dependencies:** Open a terminal in the project's root folder and run:
     ```bash
     npm install
     ```
-2.  **Build & Zip the Extension:** Run the following script from `package.json` to build the TypeScript code and create the extension bundle:
+2.  **Build & Zip the Extension:**
     ```bash
     npm run zip
     ```
@@ -205,5 +160,4 @@ When you run an import:
     * Upload the `contentful-knowledge-connector.tar.gz` file.
 4.  **Create Connections:**
     * Go to **Manage** > **Connections**.
-    * Create your `Contentful Connection`.
-    * (If needed) Create your `Azure OpenAI` Connection.
+    * Configure your `Contentful Connection` and (optionally) `Azure OpenAI Connection`.
